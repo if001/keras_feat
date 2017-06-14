@@ -1,5 +1,7 @@
 '''
-CNN使わないバージョン
+CNN
+モデル、重み読み込み
+追学習
 
 '''
 
@@ -12,7 +14,9 @@ from keras.layers import Input, Convolution2D, MaxPooling2D, UpSampling2D, Dense
 from keras.models import Sequential
 from keras.models import Model
 from keras.preprocessing.image import ImageDataGenerator
+from keras.models import model_from_json
 
+from PIL import Image
 import pylab as plt
 import os
 
@@ -21,7 +25,7 @@ nb_classes = 72
 IMG_SIZE = 32
 # # IMG_SIZE, IMG_COLS = 127, 128
 
-BATCH_SIZE = 256
+BATCH_SIZE = 128
 STEP = 50
 COLOR_CHANNELS=3
 
@@ -70,7 +74,6 @@ class train_data():
         print(np.max(self.X_train))
         print(np.min(self.X_train))
 
-        
         self.X_train = self.X_train.astype(np.float32)
 
         # self.X_train = self.X_train.astype(np.float32)/np.max(self.X_train)
@@ -95,6 +98,13 @@ class train_data():
 
         print(self.X_train.shape)
         print(self.Y_train.shape)
+
+    def load_data_img(self):
+        img = np.array(Image.open("./img/wo_hiragana.jpg").convert('L'))
+        img = scipy.misc.imresize(img,(IMG_SIZE, IMG_SIZE))
+        img = np.array(img)
+        img = img.astype(np.float32)/np.max(img)
+        print(img.shape)
 
 def img_dropout(mydata):
     datagen = ImageDataGenerator(rotation_range=15, zoom_range=0.20)
@@ -138,19 +148,7 @@ class cnn_net():
 def plot_result(mynet,mydata):
     # テスト画像を変換
     decoded_imgs = mynet.autoencoder.predict(mydata.X_train)
-    
-    # ちゃんとやるバージョン???公式リファレンス
-    # input_img = Input(shape=(IMG_SIZE,IMG_SIZE,1))
-    # encoder = Model(input_img, mynet.encoded)
 
-    # decoder_layer = mynet.autoencoder.layers[-1]
-    # encoding_dim = 32
-    # encoded_input = Input(shape=(encoding_dim,))
-    # decoder = Model(encoded_input, decoder_layer(encoded_input))
-
-    # encoded_imgs = encoder.predict(mydata.X_train)
-    # decoded_imgs = decoder.predict(encoded_imgs)
-    
     # 何個表示するか
     n = 10
 
@@ -174,48 +172,76 @@ def plot_result(mynet,mydata):
         ax.get_yaxis().set_visible(False)
     plt.show()
 
-# def plot_hidden(autoencoder,X_train):
-#     input_img = Input(shape=(IMG_SIZE,IMG_SIZE,1))
 
-#     n = 10
-#     encoder = Model(input_img, encoded)
-#     encoded_imgs = encoder.predict(x_test[:n])
 
-#     plt.figure(figsize=(20, 8))
-#     for i in range(n):
-#         for j in range(8):
-#             ax = plt.subplot(8, n, j*n + i+1)
-#             plt.imshow(encoded_imgs[i][j], interpolation='none')
-#             #plt.gray()
-#             ax.get_xaxis().set_visible(False)
-#             ax.get_yaxis().set_visible(False)
-#     plt.show()
+def get_hidden(mynet,X_train):
+    input_img = Input(shape=(IMG_SIZE*IMG_SIZE,))
+
+    n = 10
+
+    encoded = Dense(128, activation='relu')(input_img)
+    encoded = Dense(64, activation='relu')(encoded)
+    encoded = Dense(32, activation='relu')(encoded)
+
+    encoder = Model(input_img, encoded)
+    encoded_imgs = encoder.predict(X_train)
+    print(encoded_imgs.shape)
+    print(encoded_imgs[0:160].mean(axis=0))
+    return encoded_imgs[0]
+
 
 
 def save_model(mynet):
     json_string = mynet.autoencoder.to_json()
     f_model = './model'
+
     open(os.path.join(f_model,'cnn_model.json'), 'w').write(json_string)
-    mynet.autoencoder.save_weights(os.path.join(f_model,'model_weights.hdf5'))
+    mynet.autoencoder.save_weights(os.path.join(f_model,'cnn_model_weights.hdf5'))
 
 
-def main():
+def get_feature():
     mydata = train_data()
     mydata.load_data()
+    mydata.load_data_img()
+
+    f_model = './model'
+    model_filename = 'cnn_model.json'
+    weights_filename = 'cnn_model_weights.hdf5'
 
     mynet = cnn_net()
-    model = Sequential()
-    mynet.model_structure(model)
+    # model読み込み
+    json_string = open(os.path.join(f_model, model_filename)).read()
+
+    mynet.autoencoder = model_from_json(json_string)
+
     mynet.autoencoder.summary()
+
+    op = "adam"
+    loss = "binary_crossentropy"
+    mynet.autoencoder.compile(optimizer=op,loss=loss)
+
+    # 重み読み込み
+    mynet.autoencoder.load_weights(os.path.join(f_model,weights_filename))
 
 
     mynet.autoencoder.fit(mydata.X_train, mydata.Y_train,
                     batch_size=BATCH_SIZE, nb_epoch=STEP,shuffle=True,
                     verbose=1, validation_data=(mydata.X_train, mydata.Y_train))
 
+
     plot_result(mynet, mydata)
     save_model(mynet)
 
+    return feat
+
+
+def get():
+    st = "を"
+    img = "./img/wo_hiragana.jpg"
+    feat = get_feature(img)
+    return {st,feat}
 
 if __name__ == "__main__" :
-    main()
+    var = get()
+    print(var)
+

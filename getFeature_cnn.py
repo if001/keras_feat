@@ -1,5 +1,5 @@
 '''
-CNN使わないバージョン
+CNN
 
 '''
 
@@ -8,7 +8,7 @@ import numpy as np
 import math
 import scipy.misc
 
-from keras.layers import Input, Convolution2D, MaxPooling2D, UpSampling2D, Dense
+from keras.layers import Input, Convolution2D, MaxPooling2D, UpSampling2D
 from keras.models import Sequential
 from keras.models import Model
 from keras.preprocessing.image import ImageDataGenerator
@@ -21,7 +21,7 @@ nb_classes = 72
 IMG_SIZE = 32
 # # IMG_SIZE, IMG_COLS = 127, 128
 
-BATCH_SIZE = 256
+BATCH_SIZE = 128
 STEP = 50
 COLOR_CHANNELS=3
 
@@ -70,7 +70,6 @@ class train_data():
         print(np.max(self.X_train))
         print(np.min(self.X_train))
 
-        
         self.X_train = self.X_train.astype(np.float32)
 
         # self.X_train = self.X_train.astype(np.float32)/np.max(self.X_train)
@@ -85,9 +84,9 @@ class train_data():
 
         # リサイズ
         self.X_train = self.X_train.reshape(self.X_train.shape[0],
-                                            IMG_SIZE*IMG_SIZE, )
+                                            IMG_SIZE, IMG_SIZE, 1)
         self.Y_train = self.X_train.reshape(self.X_train.shape[0],
-                                            IMG_SIZE*IMG_SIZE, )
+                                            IMG_SIZE, IMG_SIZE, 1)
 
         # # 一応
         # self.X_train = np.array(self.X_train)
@@ -110,17 +109,25 @@ class cnn_net():
     #     return K.variable(value,name=name)
 
     def model_structure(self,model):
-        input_img = Input(shape=(IMG_SIZE*IMG_SIZE,))
+        input_img = Input(shape=(IMG_SIZE,IMG_SIZE,1))
+        x = Convolution2D(16, 3, 3, activation='relu', border_mode='same')(input_img)
+        x = MaxPooling2D((2, 2), border_mode='same')(x)
+        x = Convolution2D(8, 3, 3, activation='relu', border_mode='same')(x)
+        x = MaxPooling2D((2, 2), border_mode='same')(x)
+        x = Convolution2D(8, 3, 3, activation='relu', border_mode='same')(x)
+        self.encoded = MaxPooling2D((2, 2), border_mode='same')(x)
 
-        encoded = Dense(128, activation='relu')(input_img)
-        encoded = Dense(64, activation='relu')(encoded)
-        encoded = Dense(32, activation='relu')(encoded)
+        x = Convolution2D(8, 3, 3, activation='relu',
+                        border_mode='same')(self.encoded)
+        x = UpSampling2D((2, 2))(x)
+        x = Convolution2D(8, 3, 3, activation='relu', border_mode='same')(x)
+        x = UpSampling2D((2, 2))(x)
+        x = Convolution2D(16, 3, 3, activation='relu', border_mode='same')(x)
+        x = UpSampling2D((2, 2))(x)
+        self.decoded = Convolution2D(1, 3, 3, activation='sigmoid',
+                                     border_mode='same')(x)
 
-        decoded = Dense(64, activation='relu')(encoded)
-        decoded = Dense(128, activation='relu')(decoded)
-        decoded = Dense(IMG_SIZE*IMG_SIZE, activation='sigmoid')(decoded)
-
-        self.autoencoder = Model(input_img, decoded)
+        self.autoencoder = Model(input_img, self.decoded)
 
 
         op = "adadelta"
@@ -191,12 +198,11 @@ def plot_result(mynet,mydata):
 #             ax.get_yaxis().set_visible(False)
 #     plt.show()
 
-
 def save_model(mynet):
     json_string = mynet.autoencoder.to_json()
     f_model = './model'
     open(os.path.join(f_model,'cnn_model.json'), 'w').write(json_string)
-    mynet.autoencoder.save_weights(os.path.join(f_model,'model_weights.hdf5'))
+    mynet.autoencoder.save_weights(os.path.join(f_model,'cnn_model_weights.hdf5'))
 
 
 def main():
@@ -206,7 +212,15 @@ def main():
     mynet = cnn_net()
     model = Sequential()
     mynet.model_structure(model)
-    mynet.autoencoder.summary()
+    # mynet.autoencoder.summary()
+
+
+    # datagen = img_dropout(mydata)
+    # mynet.autoencoder.fit_generator(datagen.flow(mydata.X_train, mydata.Y_train,
+    #                                        batch_size=BATCH_SIZE),
+    #                           samples_per_epoch = mydata.X_train.shape[0],
+    #                           nb_epoch=STEP,
+    #                           validation_data=(mydata.X_train, mydata.Y_train))
 
 
     mynet.autoencoder.fit(mydata.X_train, mydata.Y_train,
@@ -217,5 +231,6 @@ def main():
     save_model(mynet)
 
 
+    
 if __name__ == "__main__" :
     main()
